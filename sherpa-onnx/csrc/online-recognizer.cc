@@ -6,7 +6,7 @@
 #include "sherpa-onnx/csrc/online-recognizer.h"
 
 #include <assert.h>
-
+#include <chrono> 
 #include <algorithm>
 #include <iomanip>
 #include <iostream>
@@ -179,7 +179,7 @@ class OnlineRecognizer::Impl {
            s->NumFramesReady();
   }
 
-  void DecodeStreams(OnlineStream **ss, int32_t n) const {
+  void DecodeStreams(OnlineStream **ss, int32_t n, int frame_type, std::string &name) const {
     int32_t chunk_size = model_->ChunkSize();
     int32_t chunk_shift = model_->ChunkShift();
 
@@ -194,7 +194,6 @@ class OnlineRecognizer::Impl {
       const auto num_processed_frames = ss[i]->GetNumProcessedFrames();
       std::vector<float> features =
           ss[i]->GetFrames(num_processed_frames, chunk_size);
-
       // Question: should num_processed_frames include chunk_shift?
       ss[i]->GetNumProcessedFrames() += chunk_shift;
 
@@ -205,7 +204,7 @@ class OnlineRecognizer::Impl {
       states_vec[i] = std::move(ss[i]->GetStates());
       all_processed_frames[i] = num_processed_frames;
     }
-
+    auto begin = std::chrono::steady_clock::now();
     auto memory_info =
         Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
 
@@ -234,7 +233,14 @@ class OnlineRecognizer::Impl {
 
     std::vector<std::vector<Ort::Value>> next_states =
         model_->UnStackStates(pair.second);
-
+    auto end = std::chrono::steady_clock::now();
+    float elapsed_seconds =
+        std::chrono::duration_cast<std::chrono::milliseconds>(end - begin)
+            .count() /
+        1000.;
+  
+    fprintf(stderr, "%s %d elapsed_seconds: %f\n", name.c_str(), frame_type, elapsed_seconds);
+        
     for (int32_t i = 0; i != n; ++i) {
       ss[i]->SetResult(results[i]);
       ss[i]->SetStates(std::move(next_states[i]));
@@ -305,8 +311,8 @@ bool OnlineRecognizer::IsReady(OnlineStream *s) const {
   return impl_->IsReady(s);
 }
 
-void OnlineRecognizer::DecodeStreams(OnlineStream **ss, int32_t n) const {
-  impl_->DecodeStreams(ss, n);
+void OnlineRecognizer::DecodeStreams(OnlineStream **ss, int32_t n, int frame_type, std::string name) const {
+  impl_->DecodeStreams(ss, n, frame_type, name);
 }
 
 OnlineRecognizerResult OnlineRecognizer::GetResult(OnlineStream *s) const {

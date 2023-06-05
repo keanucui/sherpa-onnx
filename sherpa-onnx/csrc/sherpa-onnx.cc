@@ -7,16 +7,99 @@
 #include <chrono>  // NOLINT
 #include <string>
 #include <vector>
+#include <future>
 
 #include "sherpa-onnx/csrc/online-recognizer.h"
 #include "sherpa-onnx/csrc/online-stream.h"
 #include "sherpa-onnx/csrc/symbol-table.h"
 #include "sherpa-onnx/csrc/wave-reader.h"
 
+#include <fstream>
+
+#include "sherpa-onnx/csrc/cuidc_utils.h"
+
+void Trim(std::string *str) {
+  const char *white_chars = " \t\n\r\f\v";
+/*delete white_chars in the front and end or delete the blank line.*/
+  std::string::size_type pos = str->find_last_not_of(white_chars);
+  if (pos != std::string::npos)  {
+    str->erase(pos + 1);
+    pos = str->find_first_not_of(white_chars);
+    if (pos != std::string::npos) str->erase(0, pos);
+  } else {
+    str->erase(str->begin(), str->end());
+  }
+}
+
+std::vector<std::string> Read(const std::string &rxfilename) {
+  std::ifstream ifs(rxfilename.c_str(), std::ifstream::in);
+  std::vector<std::string> lines;
+  // there is no binary/non-binary mode.
+  // char temp[UINT_MAX];
+  if (ifs.fail()) {
+      fprintf(stderr, "error: reading line ");
+    return lines;  // probably eof.  fail in any case.
+  }
+  std::string cache;
+  while (!ifs.eof()) {
+    std::getline(ifs, cache);  // this will discard the \n, if present.
+    Trim(&cache);
+    if (!cache.empty()) {
+      lines.push_back(cache);
+    }
+  }
+  return lines;
+}
+
+std::vector<std::vector<std::string>> split(std::vector<std::string> input,
+                                            size_t chunk_num) {
+  std::vector<std::vector<std::string>> outputs;
+  if (static_cast<unsigned>(input.size()) < chunk_num) {
+    throw std::invalid_argument("输入的元素数量必须大于分块数.");
+  }
+  std::vector<unsigned> each_size(chunk_num, input.size() / chunk_num);
+  auto last_num = input.size() % chunk_num;
+  for (decltype(last_num) i = 0; i < last_num; ++i) {
+    ++each_size[i];
+  }
+
+  auto itr = input.cbegin();
+  for (const auto &size : each_size) {
+    auto chunk_end = itr + size;
+    outputs.emplace_back(itr, chunk_end);
+    itr = chunk_end;
+  }
+  return outputs;
+} 
+
+
+int process(sherpa_onnx::OnlineRecognizer* recognizer,
+             std::vector<std::string> file_names) {
+  int32_t sampling_rate = -1;
+  
+  for (auto wav_filename:file_names) {
+    bool is_ok = false;
+    std::vector<float> samples =
+        sherpa_onnx::ReadWave(wav_filename, &sampling_rate, &is_ok);
+    if (!is_ok) {
+      fprintf(stderr, "Failed to read %s\n", wav_filename.c_str());
+      return -1;
+    }
+
+    auto s = recognizer->CreateStream();
+    s->AcceptWaveform(sampling_rate, samples.data(), samples.size());
+    s->InputFinished();
+    int frame_type = 0;
+    while (recognizer->IsReady(s.get())) {
+      recognizer->DecodeStream(s.get(), frame_type, wav_filename);
+      frame_type += 1;
+    }
+  }
+}
+
 // TODO(fangjun): Use ParseOptions as we are getting more args
 int main(int32_t argc, char *argv[]) {
-  if (argc < 6 || argc > 9) {
-    const char *usage = R"usage(
+  const char *usage = R"usage(
 Usage:
   ./bin/sherpa-onnx \
     /path/to/tokens.txt \
@@ -34,90 +117,124 @@ Please refer to
 https://k2-fsa.github.io/sherpa/onnx/pretrained_models/index.html
 for a list of pre-trained models to download.
 )usage";
-    fprintf(stderr, "%s\n", usage);
+  bool use_wav_scp = false;    // true to use wav.scp as input
+  int32_t nj = 10;  // true to use feats.scp as input
+  int32_t batch_size = 10;
 
-    return 0;
-  }
-
+  sherpa_onnx::ParseOptions po(usage);
   sherpa_onnx::OnlineRecognizerConfig config;
+  config.Register(&po);
 
-  config.model_config.tokens = argv[1];
+  po.Register("use_wav_scp", &use_wav_scp,
+              "If true, user should provide two arguments: "
+              "scp:wav.scp ark,scp,t:results.ark,results.scp");
+  po.Register("nj", &nj,
+              "If true, user should provide two arguments: "
+              "scp:wav.scp ark,scp,t:results.ark,results.scp");
+  po.Register("batch-size", &batch_size,
+              "Used only when --use-wav-scp=true or --use-feats-scp=true. "
+              "It specifies the batch size to use for decoding");
+  po.Read(argc, argv);
 
-  config.model_config.debug = false;
-  config.model_config.encoder_filename = argv[2];
-  config.model_config.decoder_filename = argv[3];
-  config.model_config.joiner_filename = argv[4];
-
-  std::string wav_filename = argv[5];
-
-  config.model_config.num_threads = 2;
-  if (argc == 7 && atoi(argv[6]) > 0) {
-    config.model_config.num_threads = atoi(argv[6]);
+  if (po.NumArgs() < 1) {
+    po.PrintUsage();
+    exit(EXIT_FAILURE);
   }
-  if (argc == 8) {
-    config.decoding_method = argv[7];
-  }
-  if (argc == 9) {
-    config.lm_config.model = argv[8];
-  }
-  config.max_active_paths = 4;
-
-  fprintf(stderr, "%s\n", config.ToString().c_str());
 
   if (!config.Validate()) {
     fprintf(stderr, "Errors in config!\n");
     return -1;
   }
-
-  sherpa_onnx::OnlineRecognizer recognizer(config);
-
+  
+  std::string wav_list = "./performance.txt";
+  fprintf(stderr, "wav_list file name: %s\n", wav_list.c_str());
+  std::vector<std::string> file_names = Read(wav_list);
+  fprintf(stderr, "batch size %d\n", batch_size);
   int32_t sampling_rate = -1;
+  float elapsed_seconds = 0;
+  float duration = 0;
+  std::vector<std::vector<std::string>> chunks_files = split(file_names, nj);
+  std::vector<std::unique_ptr<sherpa_onnx::OnlineStream>> ss;
 
-  bool is_ok = false;
-  std::vector<float> samples =
-      sherpa_onnx::ReadWave(wav_filename, &sampling_rate, &is_ok);
+  for (auto wav_filename:file_names) {
+    bool is_ok = false;
+    std::vector<float> samples =
+        sherpa_onnx::ReadWave(wav_filename, &sampling_rate, &is_ok);
 
-  if (!is_ok) {
-    fprintf(stderr, "Failed to read %s\n", wav_filename.c_str());
-    return -1;
+    if (!is_ok) {
+      fprintf(stderr, "Failed to read %s\n", wav_filename.c_str());
+      return -1;
+    }
+    float duration_temp = samples.size() / static_cast<float>(sampling_rate);
+    duration += duration_temp;
   }
-  fprintf(stderr, "sampling rate of input file: %d\n", sampling_rate);
+  sherpa_onnx::OnlineRecognizer recognizer(config);
+  ResourceListener resource_listener(::getpid());
+  if (batch_size > 1) {
+    for (auto file_names_one_chunk: chunks_files)  {
+      for (auto wav_filename:file_names_one_chunk) {
+        
+        bool is_ok = false;
+        std::vector<float> samples =
+            sherpa_onnx::ReadWave(wav_filename, &sampling_rate, &is_ok);
 
-  float duration = samples.size() / static_cast<float>(sampling_rate);
+        if (!is_ok) {
+          fprintf(stderr, "Failed to read %s\n", wav_filename.c_str());
+          return -1;
+        }
+        auto begin = std::chrono::steady_clock::now();
+        auto s = recognizer.CreateStream();
+        s->AcceptWaveform(sampling_rate, samples.data(), samples.size());
 
-  fprintf(stderr, "wav filename: %s\n", wav_filename.c_str());
-  fprintf(stderr, "wav duration (s): %.3f\n", duration);
+        // std::vector<float> tail_paddings(static_cast<int>(0.5 * sampling_rate));
+        // // Note: We can call AcceptWaveform() multiple times.
+        // s->AcceptWaveform(sampling_rate, tail_paddings.data(), tail_paddings.size());
 
-  auto begin = std::chrono::steady_clock::now();
-  fprintf(stderr, "Started\n");
+        // Call InputFinished() to indicate that no audio samples are available
+        s->InputFinished();
+        ss.push_back(std::move(s));
+      }
+      std::vector<sherpa_onnx::OnlineStream*> ss_pointers;
+      while (true) {
+        for (size_t k=0; k < ss.size(); k++) {
+          if (recognizer.IsReady(ss[k].get())) {
+            ss_pointers.push_back(ss[k].get());
+          }
+        }
+        if (ss_pointers.empty()) {
+          ss.clear();
+          ss_pointers.clear();
+          break;
+        }
+        auto begin = std::chrono::steady_clock::now();
+        recognizer.DecodeStreams(ss_pointers.data(), ss_pointers.size());
+        auto end = std::chrono::steady_clock::now();
+        elapsed_seconds +=
+        std::chrono::duration_cast<std::chrono::milliseconds>(end - begin)
+            .count() /
+        1000.;
 
-  auto s = recognizer.CreateStream();
-  s->AcceptWaveform(sampling_rate, samples.data(), samples.size());
+        ss_pointers.clear();
+      }
 
-  std::vector<float> tail_paddings(static_cast<int>(0.5 * sampling_rate));
-  // Note: We can call AcceptWaveform() multiple times.
-  s->AcceptWaveform(sampling_rate, tail_paddings.data(), tail_paddings.size());
-
-  // Call InputFinished() to indicate that no audio samples are available
-  s->InputFinished();
-
-  while (recognizer.IsReady(s.get())) {
-    recognizer.DecodeStream(s.get());
+      for (size_t k=0; k < ss.size(); k++) {
+        std::string text = recognizer.GetResult(ss_pointers[k]).AsJsonString();
+        fprintf(stderr, "Recognition result for: %s\n", text.c_str());
+      }
+    }
+  } else {
+    std::vector<std::future<int>> fs;
+    
+    for (auto chunks:chunks_files) {
+      fs.emplace_back(std::async(std::launch::async, process, &recognizer, chunks));
+    }
+    auto begin = std::chrono::steady_clock::now();
+    for (const auto &each_f : fs) {
+        each_f.wait();
+    }
+    auto end = std::chrono::steady_clock::now();
   }
-
-  std::string text = recognizer.GetResult(s.get()).AsJsonString();
-
-  fprintf(stderr, "Done!\n");
-
-  fprintf(stderr, "Recognition result for %s:\n%s\n", wav_filename.c_str(),
-          text.c_str());
-
-  auto end = std::chrono::steady_clock::now();
-  float elapsed_seconds =
-      std::chrono::duration_cast<std::chrono::milliseconds>(end - begin)
-          .count() /
-      1000.;
-
+  resource_listener.ExitListen();
   fprintf(stderr, "num threads: %d\n", config.model_config.num_threads);
   fprintf(stderr, "decoding method: %s\n", config.decoding_method.c_str());
   if (config.decoding_method == "modified_beam_search") {

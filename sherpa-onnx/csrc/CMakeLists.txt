@@ -59,6 +59,7 @@ set(sources
   transpose.cc
   unbind.cc
   wave-reader.cc
+  cuidc_utils.cc
 )
 
 if(SHERPA_ONNX_ENABLE_CHECK)
@@ -70,6 +71,8 @@ add_library(sherpa-onnx-core ${sources})
 if(ANDROID_NDK)
   target_link_libraries(sherpa-onnx-core android log)
 endif()
+
+target_link_libraries(sherpa-onnx-core -pthread)
 
 target_link_libraries(sherpa-onnx-core
   onnxruntime

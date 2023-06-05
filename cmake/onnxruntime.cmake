@@ -24,8 +24,8 @@ function(download_onnxruntime)
       /star-fj/fangjun/download/github/onnxruntime-linux-x64-1.14.0.tgz
     )
 
-    set(onnxruntime_URL  "https://github.com/microsoft/onnxruntime/releases/download/v1.14.0/onnxruntime-linux-x64-1.14.0.tgz")
-    set(onnxruntime_URL2 "https://huggingface.co/csukuangfj/sherpa-onnx-cmake-deps/resolve/main/onnxruntime-linux-x64-1.14.0.tgz")
+    set(onnxruntime_URL  "file:///data1/cuidc/gitlab/depend_packages/onnxruntime-linux-x64-1.14.0.tgz")
+    #set(onnxruntime_URL2 "https://huggingface.co/csukuangfj/sherpa-onnx-cmake-deps/resolve/main/onnxruntime-linux-x64-1.14.0.tgz")
     set(onnxruntime_HASH "SHA256=92bf534e5fa5820c8dffe9de2850f84ed2a1c063e47c659ce09e8c7938aa2090")
     # After downloading, it contains:
     #  ./lib/libonnxruntime.so.1.14.0

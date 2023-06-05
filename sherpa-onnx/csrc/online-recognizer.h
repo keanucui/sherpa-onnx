@@ -119,9 +119,9 @@ class OnlineRecognizer {
   bool IsReady(OnlineStream *s) const;
 
   /** Decode a single stream. */
-  void DecodeStream(OnlineStream *s) const {
+  void DecodeStream(OnlineStream *s, int frame_type=0, std::string name="test") const {
     OnlineStream *ss[1] = {s};
-    DecodeStreams(ss, 1);
+    DecodeStreams(ss, 1, frame_type, name);
   }
 
   /** Decode multiple streams in parallel
@@ -129,7 +129,7 @@ class OnlineRecognizer {
    * @param ss Pointer array containing streams to be decoded.
    * @param n Number of streams in `ss`.
    */
-  void DecodeStreams(OnlineStream **ss, int32_t n) const;
+  void DecodeStreams(OnlineStream **ss, int32_t n, int frame_type=0, std::string name="test") const;
 
   OnlineRecognizerResult GetResult(OnlineStream *s) const;
 
