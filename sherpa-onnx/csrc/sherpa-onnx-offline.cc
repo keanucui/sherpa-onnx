@@ -156,9 +156,7 @@ for a list of pre-trained models to download.
   }
 
   fprintf(stderr, "Creating recognizer ...\n");
-
-  fprintf(stderr, "Started\n");
-
+  const auto begin = std::chrono::steady_clock::now();
   std::vector<std::unique_ptr<sherpa_onnx::OfflineStream>> ss;
   std::vector<sherpa_onnx::OfflineStream *> ss_pointers;
 
@@ -169,7 +167,7 @@ for a list of pre-trained models to download.
   for (auto wav_filename:file_names) {
     int32_t sampling_rate = -1;
     bool is_ok = false;
-    std::vector<float> samples =
+    const std::vector<float> samples =
         sherpa_onnx::ReadWave(wav_filename, &sampling_rate, &is_ok);
     if (!is_ok) {
       fprintf(stderr, "Failed to read %s\n", wav_filename.c_str());
@@ -235,7 +233,6 @@ for a list of pre-trained models to download.
       ss.clear();
       ss_pointers.clear();
     }
-
     fprintf(stderr, "Elapsed seconds: %.3f s\n", elapsed_seconds_all);
     float rtf = duration / elapsed_seconds_all;
     fprintf(stderr, "Real time factor (RTF): %.3f / %.3f = %.3f\n",
@@ -269,8 +266,6 @@ for a list of pre-trained models to download.
             duration, elapsed_seconds, rtf);
 
   }
-  
-
 
   return 0;
 }

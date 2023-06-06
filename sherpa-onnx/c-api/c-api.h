@@ -52,6 +52,7 @@ SHERPA_ONNX_API typedef struct SherpaOnnxOnlineTransducerModelConfig {
   const char *joiner;
   const char *tokens;
   int32_t num_threads;
+  const char *provider;
   int32_t debug;  // true to print debug information of the model
 } SherpaOnnxOnlineTransducerModelConfig;
 
@@ -126,14 +127,14 @@ SHERPA_ONNX_API void DestroyOnlineRecognizer(
 ///
 /// @param recognizer  A pointer returned by CreateOnlineRecognizer()
 /// @return Return a pointer to an OnlineStream. The user has to invoke
-///         DestoryOnlineStream() to free it to avoid memory leak.
+///         DestroyOnlineStream() to free it to avoid memory leak.
 SHERPA_ONNX_API SherpaOnnxOnlineStream *CreateOnlineStream(
     const SherpaOnnxOnlineRecognizer *recognizer);
 
 /// Destroy an online stream.
 ///
 /// @param stream A pointer returned by CreateOnlineStream()
-SHERPA_ONNX_API void DestoryOnlineStream(SherpaOnnxOnlineStream *stream);
+SHERPA_ONNX_API void DestroyOnlineStream(SherpaOnnxOnlineStream *stream);
 
 /// Accept input audio samples and compute the features.
 /// The user has to invoke DecodeOnlineStream() to run the neural network and
@@ -303,14 +304,14 @@ SHERPA_ONNX_API void DestroyOfflineRecognizer(
 ///
 /// @param recognizer  A pointer returned by CreateOfflineRecognizer()
 /// @return Return a pointer to an OfflineStream. The user has to invoke
-///         DestoryOfflineStream() to free it to avoid memory leak.
+///         DestroyOfflineStream() to free it to avoid memory leak.
 SHERPA_ONNX_API SherpaOnnxOfflineStream *CreateOfflineStream(
     const SherpaOnnxOfflineRecognizer *recognizer);
 
 /// Destroy an offline stream.
 ///
 /// @param stream A pointer returned by CreateOfflineStream()
-SHERPA_ONNX_API void DestoryOfflineStream(SherpaOnnxOfflineStream *stream);
+SHERPA_ONNX_API void DestroyOfflineStream(SherpaOnnxOfflineStream *stream);
 
 /// Accept input audio samples and compute the features.
 /// The user has to invoke DecodeOfflineStream() to run the neural network and

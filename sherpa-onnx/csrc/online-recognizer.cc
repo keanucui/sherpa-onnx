@@ -9,7 +9,6 @@
 #include <chrono> 
 #include <algorithm>
 #include <iomanip>
-#include <iostream>
 #include <memory>
 #include <sstream>
 #include <utility>
@@ -130,7 +129,7 @@ class OnlineRecognizer::Impl {
         endpoint_(config_.endpoint_config) {
     if (config.decoding_method == "modified_beam_search") {
       if (!config_.lm_config.model.empty()) {
-        lm_ = OnlineLM::Create(config.lm_config);
+        lm_ = OnlineLM::Create(config);
       }
 
       decoder_ = std::make_unique<OnlineTransducerModifiedBeamSearchDecoder>(
@@ -140,8 +139,8 @@ class OnlineRecognizer::Impl {
       decoder_ =
           std::make_unique<OnlineTransducerGreedySearchDecoder>(model_.get());
     } else {
-      fprintf(stderr, "Unsupported decoding method: %s\n",
-              config.decoding_method.c_str());
+      SHERPA_ONNX_LOGE("Unsupported decoding method: %s",
+                       config.decoding_method.c_str());
       exit(-1);
     }
   }
@@ -160,8 +159,8 @@ class OnlineRecognizer::Impl {
       decoder_ =
           std::make_unique<OnlineTransducerGreedySearchDecoder>(model_.get());
     } else {
-      fprintf(stderr, "Unsupported decoding method: %s\n",
-              config.decoding_method.c_str());
+      SHERPA_ONNX_LOGE("Unsupported decoding method: %s",
+                       config.decoding_method.c_str());
       exit(-1);
     }
   }
@@ -215,19 +214,16 @@ class OnlineRecognizer::Impl {
                                             x_shape.size());
 
     std::array<int64_t, 1> processed_frames_shape{
-      static_cast<int64_t>(all_processed_frames.size())};
+        static_cast<int64_t>(all_processed_frames.size())};
 
     Ort::Value processed_frames = Ort::Value::CreateTensor(
-      memory_info,
-      all_processed_frames.data(),
-      all_processed_frames.size(),
-      processed_frames_shape.data(),
-      processed_frames_shape.size());
+        memory_info, all_processed_frames.data(), all_processed_frames.size(),
+        processed_frames_shape.data(), processed_frames_shape.size());
 
     auto states = model_->StackStates(states_vec);
 
-    auto pair = model_->RunEncoder(
-      std::move(x), std::move(states), std::move(processed_frames));
+    auto pair = model_->RunEncoder(std::move(x), std::move(states),
+                                   std::move(processed_frames));
 
     decoder_->Decode(std::move(pair.first), &results);
 

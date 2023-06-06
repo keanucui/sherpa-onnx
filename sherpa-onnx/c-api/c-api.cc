@@ -41,6 +41,7 @@ SherpaOnnxOnlineRecognizer *CreateOnlineRecognizer(
   recognizer_config.model_config.joiner_filename = config->model_config.joiner;
   recognizer_config.model_config.tokens = config->model_config.tokens;
   recognizer_config.model_config.num_threads = config->model_config.num_threads;
+  recognizer_config.model_config.provider = config->model_config.provider;
   recognizer_config.model_config.debug = config->model_config.debug;
 
   recognizer_config.decoding_method = config->decoding_method;
@@ -80,7 +81,7 @@ SherpaOnnxOnlineStream *CreateOnlineStream(
   return stream;
 }
 
-void DestoryOnlineStream(SherpaOnnxOnlineStream *stream) { delete stream; }
+void DestroyOnlineStream(SherpaOnnxOnlineStream *stream) { delete stream; }
 
 void AcceptWaveform(SherpaOnnxOnlineStream *stream, int32_t sample_rate,
                     const float *samples, int32_t n) {
@@ -222,7 +223,7 @@ SherpaOnnxOfflineStream *CreateOfflineStream(
   return stream;
 }
 
-void DestoryOfflineStream(SherpaOnnxOfflineStream *stream) { delete stream; }
+void DestroyOfflineStream(SherpaOnnxOfflineStream *stream) { delete stream; }
 
 void AcceptWaveformOffline(SherpaOnnxOfflineStream *stream, int32_t sample_rate,
                            const float *samples, int32_t n) {
