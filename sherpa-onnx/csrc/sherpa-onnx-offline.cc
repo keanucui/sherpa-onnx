@@ -69,8 +69,30 @@ std::vector<std::vector<std::string>> split(std::vector<std::string> input,
   return outputs;
 }
 
-int process(sherpa_onnx::OfflineRecognizer* recognizer,
+// int process(sherpa_onnx::OfflineRecognizer* recognizer,
+//              std::vector<std::string> file_names) {
+//     for (int32_t i = 0; i < file_names.size(); ++i) {
+//       std::string wav_filename = file_names[i];
+//       int32_t sampling_rate = -1;
+//       bool is_ok = false;
+//       std::vector<float> samples =
+//           sherpa_onnx::ReadWave(wav_filename, &sampling_rate, &is_ok);
+//       if (!is_ok) {
+//         fprintf(stderr, "Failed to read %s\n", wav_filename.c_str());
+//         return -1;
+//       }
+//       auto s = recognizer->CreateStream();
+//       s->AcceptWaveform(sampling_rate, samples.data(), samples.size());
+//       recognizer->DecodeStream(s.get());
+//       // std::string text = s->GetResult().AsJsonString();
+//       // fprintf(stderr, "%s\n", text.c_str());
+//     }
+//     return 0;
+// }
+
+int process(sherpa_onnx::OfflineRecognizerConfig config,
              std::vector<std::string> file_names) {
+    sherpa_onnx::OfflineRecognizer recognizer(config);
     for (int32_t i = 0; i < file_names.size(); ++i) {
       std::string wav_filename = file_names[i];
       int32_t sampling_rate = -1;
@@ -81,9 +103,9 @@ int process(sherpa_onnx::OfflineRecognizer* recognizer,
         fprintf(stderr, "Failed to read %s\n", wav_filename.c_str());
         return -1;
       }
-      auto s = recognizer->CreateStream();
+      auto s = recognizer.CreateStream();
       s->AcceptWaveform(sampling_rate, samples.data(), samples.size());
-      recognizer->DecodeStream(s.get());
+      recognizer.DecodeStream(s.get());
       // std::string text = s->GetResult().AsJsonString();
       // fprintf(stderr, "%s\n", text.c_str());
     }
@@ -126,14 +148,14 @@ Please refer to
 https://k2-fsa.github.io/sherpa/onnx/pretrained_models/index.html
 for a list of pre-trained models to download.
 )usage";
-  bool use_wav_scp = false;    // true to use wav.scp as input
+  bool single_process = false;    // true to use wav.scp as input
   int32_t nj = 10;  // true to use feats.scp as input
-  int32_t batch_size = 10;
+  int32_t batch_size = 1;
 
   sherpa_onnx::ParseOptions po(kUsageMessage);
   sherpa_onnx::OfflineRecognizerConfig config;
   config.Register(&po);
-  po.Register("use_wav_scp", &use_wav_scp,
+  po.Register("single-process", &single_process,
               "If true, user should provide two arguments: "
               "scp:wav.scp ark,scp,t:results.ark,results.scp");
   po.Register("nj", &nj,
@@ -175,13 +197,13 @@ for a list of pre-trained models to download.
     }
     duration += samples.size() / static_cast<float>(sampling_rate);
   }
-  sherpa_onnx::OfflineRecognizer recognizer(config);
+ 
   std::vector<std::vector<std::string>> chunks_files = split(file_names, nj);
   ResourceListener resource_listener(::getpid());
-  if (use_wav_scp) {
+  if (single_process) {
     std::vector<std::string> keys;
     float elapsed_seconds_all = 0;
-  
+    sherpa_onnx::OfflineRecognizer recognizer(config);
     for (auto wav_filename:file_names) {
       int32_t sampling_rate = -1;
       bool is_ok = false;
@@ -233,16 +255,21 @@ for a list of pre-trained models to download.
       ss.clear();
       ss_pointers.clear();
     }
+    resource_listener.ExitListen();
     fprintf(stderr, "Elapsed seconds: %.3f s\n", elapsed_seconds_all);
     float rtf = duration / elapsed_seconds_all;
     fprintf(stderr, "Real time factor (RTF): %.3f / %.3f = %.3f\n",
             duration, elapsed_seconds_all, rtf);
+       
     
   } else {
     std::vector<std::future<int>> fs;
-    
+    // sherpa_onnx::OfflineRecognizer recognizer(config);
+    // for (auto chunks:chunks_files) {
+    //   fs.emplace_back(std::async(std::launch::async, process, &recognizer, chunks));
+    // }
     for (auto chunks:chunks_files) {
-      fs.emplace_back(std::async(std::launch::async, process, &recognizer, chunks));
+      fs.emplace_back(std::async(std::launch::async, process, config, chunks));
     }
     auto begin = std::chrono::steady_clock::now();
     for (const auto &each_f : fs) {
