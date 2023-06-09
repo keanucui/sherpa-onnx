@@ -129,7 +129,7 @@ class OnlineRecognizer::Impl {
         endpoint_(config_.endpoint_config) {
     if (config.decoding_method == "modified_beam_search") {
       if (!config_.lm_config.model.empty()) {
-        lm_ = OnlineLM::Create(config.lm_config);
+        lm_ = OfflineLM::Create(config.lm_config);
       }
 
       decoder_ = std::make_unique<OnlineTransducerModifiedBeamSearchDecoder>(
@@ -178,7 +178,8 @@ class OnlineRecognizer::Impl {
            s->NumFramesReady();
   }
 
-  void DecodeStreams(OnlineStream **ss, int32_t n, int frame_type, std::string &name) const {
+  void DecodeStreams(OnlineStream **ss, int32_t n, int frame_type,
+      std::string &name, bool is_last) const {
     int32_t chunk_size = model_->ChunkSize();
     int32_t chunk_shift = model_->ChunkShift();
 
@@ -188,20 +189,22 @@ class OnlineRecognizer::Impl {
     std::vector<float> features_vec(n * chunk_size * feature_dim);
     std::vector<std::vector<Ort::Value>> states_vec(n);
     std::vector<int64_t> all_processed_frames(n);
-
+    int32_t num_processed_frames = 0;
+    int32_t num_framesReady = 0;
     for (int32_t i = 0; i != n; ++i) {
-      const auto num_processed_frames = ss[i]->GetNumProcessedFrames();
+      num_processed_frames = ss[i]->GetNumProcessedFrames();
       std::vector<float> features =
           ss[i]->GetFrames(num_processed_frames, chunk_size);
       // Question: should num_processed_frames include chunk_shift?
       ss[i]->GetNumProcessedFrames() += chunk_shift;
-
       std::copy(features.begin(), features.end(),
                 features_vec.data() + i * chunk_size * feature_dim);
 
       results[i] = std::move(ss[i]->GetResult());
       states_vec[i] = std::move(ss[i]->GetStates());
       all_processed_frames[i] = num_processed_frames;
+      num_processed_frames = ss[i]->GetNumProcessedFrames();
+      num_framesReady = ss[i]->NumFramesReady();
     }
     auto begin = std::chrono::steady_clock::now();
     auto memory_info =
@@ -224,8 +227,12 @@ class OnlineRecognizer::Impl {
 
     auto pair = model_->RunEncoder(std::move(x), std::move(states),
                                    std::move(processed_frames));
-
-    decoder_->Decode(std::move(pair.first), &results);
+    
+    if (num_processed_frames + model_->ChunkSize() >= num_framesReady)
+    {
+      is_last = true;
+    }
+    decoder_->Decode(std::move(pair.first), &results, is_last);
 
     std::vector<std::vector<Ort::Value>> next_states =
         model_->UnStackStates(pair.second);
@@ -282,7 +289,7 @@ class OnlineRecognizer::Impl {
  private:
   OnlineRecognizerConfig config_;
   std::unique_ptr<OnlineTransducerModel> model_;
-  std::unique_ptr<OnlineLM> lm_;
+  std::unique_ptr<OfflineLM> lm_;
   std::unique_ptr<OnlineTransducerDecoder> decoder_;
   SymbolTable sym_;
   Endpoint endpoint_;
@@ -307,8 +314,9 @@ bool OnlineRecognizer::IsReady(OnlineStream *s) const {
   return impl_->IsReady(s);
 }
 
-void OnlineRecognizer::DecodeStreams(OnlineStream **ss, int32_t n, int frame_type, std::string name) const {
-  impl_->DecodeStreams(ss, n, frame_type, name);
+void OnlineRecognizer::DecodeStreams(OnlineStream **ss, int32_t n, int frame_type,
+                                     std::string name, bool is_last) const {
+  impl_->DecodeStreams(ss, n, frame_type, name, is_last);
 }
 
 OnlineRecognizerResult OnlineRecognizer::GetResult(OnlineStream *s) const {

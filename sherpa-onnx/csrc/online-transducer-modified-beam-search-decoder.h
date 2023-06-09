@@ -8,7 +8,7 @@
 
 #include <vector>
 
-#include "sherpa-onnx/csrc/online-lm.h"
+#include "sherpa-onnx/csrc/offline-lm.h"
 #include "sherpa-onnx/csrc/online-transducer-decoder.h"
 #include "sherpa-onnx/csrc/online-transducer-model.h"
 
@@ -18,7 +18,7 @@ class OnlineTransducerModifiedBeamSearchDecoder
     : public OnlineTransducerDecoder {
  public:
   OnlineTransducerModifiedBeamSearchDecoder(OnlineTransducerModel *model,
-                                            OnlineLM *lm,
+                                            OfflineLM *lm,
                                             int32_t max_active_paths,
                                             float lm_scale)
       : model_(model),
@@ -31,13 +31,13 @@ class OnlineTransducerModifiedBeamSearchDecoder
   void StripLeadingBlanks(OnlineTransducerDecoderResult *r) const override;
 
   void Decode(Ort::Value encoder_out,
-              std::vector<OnlineTransducerDecoderResult> *result) override;
+              std::vector<OnlineTransducerDecoderResult> *result, bool is_last=false) override;
 
   void UpdateDecoderOut(OnlineTransducerDecoderResult *result) override;
 
  private:
   OnlineTransducerModel *model_;  // Not owned
-  OnlineLM *lm_;                  // Not owned
+  OfflineLM *lm_;                  // Not owned
 
   int32_t max_active_paths_;
   float lm_scale_;  // used only when lm_ is not nullptr

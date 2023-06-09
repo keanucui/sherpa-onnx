@@ -72,7 +72,8 @@ void OnlineTransducerGreedySearchDecoder::StripLeadingBlanks(
 
 void OnlineTransducerGreedySearchDecoder::Decode(
     Ort::Value encoder_out,
-    std::vector<OnlineTransducerDecoderResult> *result) {
+    std::vector<OnlineTransducerDecoderResult> *result,
+    bool is_last) {
   std::vector<int64_t> encoder_out_shape =
       encoder_out.GetTensorTypeAndShapeInfo().GetShape();
 

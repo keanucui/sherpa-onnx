@@ -61,7 +61,7 @@ void OnlineTransducerModifiedBeamSearchDecoder::StripLeadingBlanks(
 
 void OnlineTransducerModifiedBeamSearchDecoder::Decode(
     Ort::Value encoder_out,
-    std::vector<OnlineTransducerDecoderResult> *result) {
+    std::vector<OnlineTransducerDecoderResult> *result, bool is_last) {
   std::vector<int64_t> encoder_out_shape =
       encoder_out.GetTensorTypeAndShapeInfo().GetShape();
 
@@ -146,9 +146,9 @@ void OnlineTransducerModifiedBeamSearchDecoder::Decode(
           new_hyp.ys.push_back(new_token);
           new_hyp.timestamps.push_back(t + frame_offset);
           new_hyp.num_trailing_blanks = 0;
-          if (lm_) {
-            lm_->ComputeLMScore(lm_scale_, &new_hyp);
-          }
+          // if (lm_) {
+          //   lm_->ComputeLMScore(lm_scale_, &new_hyp);
+          // }
         } else {
           ++new_hyp.num_trailing_blanks;
         }
@@ -161,7 +161,11 @@ void OnlineTransducerModifiedBeamSearchDecoder::Decode(
       p_logprob += (end - start) * vocab_size;
     }  // for (int32_t b = 0; b != batch_size; ++b)
   }
-
+  int32_t context_size = model_->ContextSize();
+  if (lm_ and is_last) {
+    // use LM for rescoring
+    lm_->ComputeLMScore(lm_scale_, context_size, &cur);
+  }
   for (int32_t b = 0; b != batch_size; ++b) {
     auto &hyps = cur[b];
     auto best_hyp = hyps.GetMostProbable(true);

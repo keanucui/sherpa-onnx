@@ -16,7 +16,7 @@
 
 #include "sherpa-onnx/csrc/endpoint.h"
 #include "sherpa-onnx/csrc/features.h"
-#include "sherpa-onnx/csrc/online-lm-config.h"
+#include "sherpa-onnx/csrc/offline-lm-config.h"
 #include "sherpa-onnx/csrc/online-stream.h"
 #include "sherpa-onnx/csrc/online-transducer-model-config.h"
 #include "sherpa-onnx/csrc/parse-options.h"
@@ -68,7 +68,7 @@ struct OnlineRecognizerResult {
 struct OnlineRecognizerConfig {
   FeatureExtractorConfig feat_config;
   OnlineTransducerModelConfig model_config;
-  OnlineLMConfig lm_config;
+  OfflineLMConfig lm_config;
   EndpointConfig endpoint_config;
   bool enable_endpoint = true;
 
@@ -81,7 +81,7 @@ struct OnlineRecognizerConfig {
 
   OnlineRecognizerConfig(const FeatureExtractorConfig &feat_config,
                          const OnlineTransducerModelConfig &model_config,
-                         const OnlineLMConfig &lm_config,
+                         const OfflineLMConfig &lm_config,
                          const EndpointConfig &endpoint_config,
                          bool enable_endpoint,
                          const std::string &decoding_method,
@@ -129,8 +129,8 @@ class OnlineRecognizer {
    * @param ss Pointer array containing streams to be decoded.
    * @param n Number of streams in `ss`.
    */
-  void DecodeStreams(OnlineStream **ss, int32_t n, int frame_type=0, std::string name="test") const;
-
+  void DecodeStreams(OnlineStream **ss, int32_t n, int frame_type=0,
+                     std::string name="test", bool is_last=false) const;
   OnlineRecognizerResult GetResult(OnlineStream *s) const;
 
   // Return true if we detect an endpoint for this stream.

@@ -22,7 +22,7 @@ class OnlineTransducerGreedySearchDecoder : public OnlineTransducerDecoder {
   void StripLeadingBlanks(OnlineTransducerDecoderResult *r) const override;
 
   void Decode(Ort::Value encoder_out,
-              std::vector<OnlineTransducerDecoderResult> *result) override;
+              std::vector<OnlineTransducerDecoderResult> *result,  bool is_last=false) override;
 
  private:
   OnlineTransducerModel *model_;  // Not owned

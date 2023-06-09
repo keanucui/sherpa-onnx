@@ -74,7 +74,7 @@ class OnlineTransducerDecoder {
    * and there are no paddings.
    */
   virtual void Decode(Ort::Value encoder_out,
-                      std::vector<OnlineTransducerDecoderResult> *result) = 0;
+                      std::vector<OnlineTransducerDecoderResult> *result, bool is_last = false) = 0;
 
   // used for endpointing. We need to keep decoder_out after reset
   virtual void UpdateDecoderOut(OnlineTransducerDecoderResult *result) {}
